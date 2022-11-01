@@ -16,6 +16,15 @@ public class PlayerController : NetworkBehaviour
   public float jumpForce;
   private bool jump;
   private bool isground;
+
+  [SerializeField] private TrailRenderer tr;
+  private bool canDash;
+  private bool isDash;
+  private bool dash;
+  private float dashingPower = 1.2f;
+  private float dashingTime = 0.2f;
+  private float dashingCooldown = 1f;
+
   [SyncVar(Channel = Channel.Unreliable, OnChange = nameof(Flip))]
   private bool _facingRight;
   public Transform detectsGround;
@@ -28,6 +37,7 @@ public class PlayerController : NetworkBehaviour
     base.OnStartServer();
     _facingRight = true;
     rb = GetComponent<Rigidbody2D>();
+    canDash = true;
   }
 
   public override void OnStartClient()
@@ -78,7 +88,7 @@ public class PlayerController : NetworkBehaviour
   {
     if (base.IsServer)
     {
-      ReconcileData rd = new ReconcileData(transform.position, rb.velocity, rb.angularVelocity, _facingRight);
+      ReconcileData rd = new ReconcileData(transform.position, rb.velocity, rb.angularVelocity, _facingRight, rb.gravityScale);
       Reconciliation(rd, true);
     }
   }
@@ -90,13 +100,34 @@ public class PlayerController : NetworkBehaviour
     if (!jump && direction.x == 0f && direction.y == 0f)
       return;
     
-    md = new MoveData(jump, direction);
-    jump = false;
+    md = new MoveData(jump, direction, dash);
+        jump = false;
+        dash = false;
   }
+    private IEnumerator Dash()
+    {
+        canDash = false;
+        isDash = true;
+        float originalGravity = rb.gravityScale;
+        rb.gravityScale = 0f;
+        rb.velocity = m_Velocity * dashingPower;
+        tr.emitting = true;
+        yield return new  WaitForSeconds(dashingTime);
+        tr.emitting = false;
+        rb.gravityScale = originalGravity;
+        isDash = false;
+        yield return new WaitForSeconds(dashingCooldown);
+        canDash = true;
+
+    }
 
   [Replicate]
   private void Move(MoveData md, bool asServer, bool replaying  = false)
   {
+   if (isDash)
+   {
+     return;
+   }
     Vector2 targetVelocity = new Vector2(md.direction.x * moveSpeed * (float)base.TimeManager.TickDelta * 10f, rb.velocity.y);
     rb.velocity = Vector2.SmoothDamp(rb.velocity, targetVelocity, ref m_Velocity, 0.05f);
     isground = Physics2D.OverlapCircle(detectsGround.position, 0.2f, ground);
@@ -105,6 +136,10 @@ public class PlayerController : NetworkBehaviour
       rb.AddForce(Vector2.up * jumpForce, ForceMode2D.Impulse);
       if ((asServer || base.IsServer) && !replaying)
         animator.SetBool("isJump", true);
+    }
+    if (md.dash && canDash)
+    {
+      StartCoroutine(Dash());
     }
 
     if (md.direction.x > 0 && !_facingRight)
@@ -152,6 +187,7 @@ public class PlayerController : NetworkBehaviour
     rb.velocity = rd.velocity;
     rb.angularVelocity = rd.angularVelocity;
     _facingRight = rd.facingRight;
+    rb.gravityScale = rd.gravity;
   }
   private void OnEnable()
   {
@@ -171,6 +207,14 @@ public class PlayerController : NetworkBehaviour
     if (base.IsOwner)
       direction = context.ReadValue<Vector2>();
   }
+    public void Dash(InputAction.CallbackContext ctx)
+    {
+        if (base.IsOwner)
+        {
+            dash = ctx.performed;
+        }
+            
+    }
   public void OnDrawGizmos()
   {
     Gizmos.color = Color.red;
@@ -183,10 +227,12 @@ public struct  MoveData
 {
   public bool jump;
   public Vector2 direction;
-  public MoveData (bool jump, Vector2 direction)
+  public bool dash;
+  public MoveData (bool jump, Vector2 direction, bool dash)
   {
     this.jump = jump;
     this.direction = direction;
+    this.dash = dash;
   }
 }
 
@@ -196,11 +242,14 @@ public struct ReconcileData
   public bool facingRight;
   public Vector2 velocity;
   public float angularVelocity;
-  public ReconcileData (Vector3 pos, Vector2 vel, float aVel, bool fRight)
+    public float gravity;
+  public ReconcileData (Vector3 pos, Vector2 vel, float aVel, bool fRight, float grav)
   {
     position = pos;
     velocity = vel;
     angularVelocity = aVel;
     facingRight = fRight;
+    gravity = grav;
+
   }
 }
