@@ -21,7 +21,7 @@ public class PlayerController : NetworkBehaviour
   private bool canDash;
   private bool isDash;
   private bool dash;
-  private float dashingPower = 1.2f;
+  private float dashingPower = 10f;
   private float dashingTime = 0.2f;
   private float dashingCooldown = 1f;
 
@@ -104,23 +104,6 @@ public class PlayerController : NetworkBehaviour
         jump = false;
         dash = false;
   }
-    private IEnumerator Dash()
-    {
-        canDash = false;
-        isDash = true;
-        float originalGravity = rb.gravityScale;
-        rb.gravityScale = 0f;
-        rb.velocity = m_Velocity * dashingPower;
-        tr.emitting = true;
-        yield return new  WaitForSeconds(dashingTime);
-        tr.emitting = false;
-        rb.gravityScale = originalGravity;
-        isDash = false;
-        yield return new WaitForSeconds(dashingCooldown);
-        canDash = true;
-
-    }
-
   [Replicate]
   private void Move(MoveData md, bool asServer, bool replaying  = false)
   {
@@ -139,7 +122,7 @@ public class PlayerController : NetworkBehaviour
     }
     if (md.dash && canDash)
     {
-      StartCoroutine(Dash());
+      StartCoroutine(Dash(md));
     }
 
     if (md.direction.x > 0 && !_facingRight)
@@ -168,7 +151,8 @@ public class PlayerController : NetworkBehaviour
     
   }
 
-  private void Flip(bool oldVal, bool newVal, bool asServer)
+
+    private void Flip(bool oldVal, bool newVal, bool asServer)
   {
     Vector3 localScale = transform.localScale;
     if (_facingRight)
@@ -220,6 +204,22 @@ public class PlayerController : NetworkBehaviour
     Gizmos.color = Color.red;
     Gizmos.DrawWireSphere(detectsGround.position, 0.2f);
   }
+    private IEnumerator Dash(MoveData md)
+    {
+        canDash = false;
+        isDash = true;
+        float originalGravity = rb.gravityScale;
+        rb.gravityScale = 0f;
+        rb.velocity = new Vector2(md.direction.x * dashingPower, 0f) ;
+        tr.emitting = true;
+        yield return new WaitForSeconds(dashingTime);
+        tr.emitting = false;
+        rb.gravityScale = originalGravity;
+        isDash = false;
+        yield return new WaitForSeconds(dashingCooldown);
+        canDash = true;
+
+    }
 }
 
 
@@ -252,4 +252,5 @@ public struct ReconcileData
     gravity = grav;
 
   }
+
 }
